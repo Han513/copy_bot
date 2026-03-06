@@ -1,0 +1,10 @@
+aiogram==3.6.0
+aiohttp==3.9.5
+aiohttp-socks>=0.8.0  # Telegram 代理（socks4/socks5）需此套件；若僅用 HTTP 代理可移除
+python-dotenv==1.0.1
+SQLAlchemy==2.0.35
+aiosqlite==0.20.0
+asyncpg
+aiomysql==0.3.2
+PyMySQL==1.1.2
+loguru==0.7.3
