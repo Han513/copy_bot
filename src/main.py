@@ -149,13 +149,35 @@ def _home_reply_kb(lang: str) -> ReplyKeyboardMarkup:
     )
 
 
+async def _restore_home_reply_kb(message: types.Message, lang: str) -> None:
+    """
+    透過送出不可見字元訊息，讓 Telegram Web 重新套用 ReplyKeyboardMarkup。
+    """
+    try:
+        try:
+            uid = str(message.from_user.id) if message.from_user else "0"
+        except Exception:
+            uid = "0"
+        _ilog("restore_home_reply_kb", user_id=uid, lang=lang)
+        # 不建議用零寬字元（部分 Telegram Web/桌面版可能不觸發鍵盤更新）
+        await message.answer(" ", reply_markup=_home_reply_kb(lang), disable_web_page_preview=True)
+    except Exception:
+        # 不影響主流程：只是讓底部鍵盤保持常駐
+        try:
+            uid = str(message.from_user.id) if message.from_user else "0"
+        except Exception:
+            uid = "0"
+        _ilog("restore_home_reply_kb_failed", user_id=uid, lang=lang)
+
+
 def _infer_lang_from_tg(language_code: Optional[str]) -> str:
     """
     將 Telegram language_code 映射到本專案語言代碼。
     只在「第一次互動初始化」時使用，不會覆蓋使用者已手動選擇的語言。
+    預設為英文。
     """
     if not language_code:
-        return "zh-TW"
+        return "en"
     code = str(language_code).strip().lower().replace("_", "-")
     if code.startswith("zh"):
         # 常見：zh-hans / zh-cn / zh-sg -> 简体；zh-hant / zh-tw / zh-hk / zh-mo -> 繁體
@@ -173,29 +195,31 @@ def _infer_lang_from_tg(language_code: Optional[str]) -> str:
 async def _init_user_lang(user_id: str, tg_language_code: Optional[str]) -> str:
     """
     第一次互動：用 TG language_code 推斷預設語言並寫入 DB（若已存在則不覆蓋）。
+    預設為英文。
     """
     try:
         uid = str(user_id).strip()
         if not uid or uid == "0":
-            return "zh-TW"
+            return "en"
         preferred = _infer_lang_from_tg(tg_language_code)
         return await ensure_user_language(uid, preferred)
     except Exception:
-        return "zh-TW"
+        return "en"
 
 
 async def _get_lang(user_id: str) -> str:
     """
     後續所有文案一律以 DB 內的使用者偏好為準，避免同一畫面混雜多語言。
+    預設為英文。
     """
     try:
         uid = str(user_id).strip()
         if not uid or uid == "0":
-            return "zh-TW"
+            return "en"
         # 若不存在就建立一筆預設（不再用 TG 語言覆蓋）
-        return await ensure_user_language(uid, "zh-TW")
+        return await ensure_user_language(uid, "en")
     except Exception:
-        return "zh-TW"
+        return "en"
 
 
 async def _ensure_bound_or_prompt(message: types.Message, user_id: str, lang: str, state: Optional[FSMContext] = None) -> bool:
@@ -514,15 +538,13 @@ def _build_tp_sl_for_position(
     lang: str,
     position: dict[str, Any],
     plan_orders: list[dict[str, Any]],
+    base_precision: Optional[int] = None,
 ) -> str:
-    """依持倉 symbol 比對 planOrder，組止盈止損字串（含比例）"""
+    """依持倉 symbol 與方向比對 planOrder，組止盈止損字串（僅價格，不含比例）；多空分開顯示。"""
     sn = _norm_symbol_for_match(str(position.get("symbol") or ""))
     if not sn:
         return ""
-    try:
-        pos_vol = float(position.get("volume") or 0)
-    except Exception:
-        pos_vol = 0
+    pos_side = _position_side_from_api(position)
     tp_parts: list[str] = []
     sl_parts: list[str] = []
     for po in plan_orders:
@@ -531,26 +553,16 @@ def _build_tp_sl_for_position(
         ps = _norm_symbol_for_match(str(po.get("symbol") or ""))
         if ps != sn:
             continue
+        po_side = _position_side_from_api(po)
+        if po_side != pos_side:
+            continue
         st = str(po.get("strategyType") or "").upper()
         px = po.get("stopPrice")
         if px is None or px == "":
             px = po.get("price")
         if px is None or px == "":
             continue
-        vol = po.get("volume")
-        close_pos = po.get("closePosition") is True
-        if vol is None or close_pos:
-            suffix = t(lang, "tp_sl_ratio_full")
-        else:
-            try:
-                if pos_vol and pos_vol > 0:
-                    pct = (float(vol) / pos_vol) * 100
-                    suffix = t(lang, "tp_sl_ratio_partial", pct=f"{pct:.1f}")
-                else:
-                    suffix = t(lang, "tp_sl_ratio_partial", pct="?")
-            except Exception:
-                suffix = ""
-        s = f"{px} ({suffix})" if suffix else str(px)
+        s = html.escape(_fmt_price_by_precision(px, base_precision))
         if st == "TP":
             tp_parts.append(s)
         elif st == "SL":
@@ -559,7 +571,7 @@ def _build_tp_sl_for_position(
     sl_str = ", ".join(sl_parts) if sl_parts else "-"
     if tp_str == "-" and sl_str == "-":
         return ""
-    return t(lang, "positions_tp_sl_line", tp=html.escape(tp_str), sl=html.escape(sl_str))
+    return t(lang, "positions_tp_sl_line", tp=tp_str, sl=sl_str)
 
 
 async def _render_positions_text(
@@ -578,6 +590,14 @@ async def _render_positions_text(
     chunk = positions[start : start + page_size]
     lev_map = leverage_by_symbol or {}
 
+    # 依 symbol 查 base_precision，用於價格展示（開倉價、標記價、強平價、止盈止損價）
+    base_precision_by_symbol: dict[str, Optional[int]] = {}
+    for p in chunk:
+        sn = _norm_symbol_for_match(str(p.get("symbol") or ""))
+        if sn and sn not in base_precision_by_symbol:
+            ci = await get_contract_info(sn)
+            base_precision_by_symbol[sn] = getattr(ci, "base_precision", None) if ci else None
+
     lines: list[str] = []
     lines.append(t(lang, "positions_title"))
     lines.append(t(lang, "positions_page", page=page + 1, pages=pages, total=total))
@@ -589,11 +609,13 @@ async def _render_positions_text(
     plan_list = plan_orders if isinstance(plan_orders, list) else []
     for p in chunk:
         sym = html.escape(str(p.get("symbol") or ""))
+        sn = _norm_symbol_for_match(str(p.get("symbol") or ""))
+        price_prec = base_precision_by_symbol.get(sn)
         side = html.escape(_pos_side_label(lang, p.get("side")))
-        avg_price = html.escape(_fmt_price_2dp(p.get("avgPrice")))
-        liq_price = html.escape(_fmt_price_2dp(p.get("liqPrice")))
+        avg_price = html.escape(_fmt_price_by_precision(p.get("avgPrice"), price_prec))
+        liq_price = html.escape(_fmt_liq_price(p.get("liqPrice"), price_prec))
         mark_price_raw = p.get("markPrice")
-        mark_price = html.escape(_fmt_price_2dp(mark_price_raw))
+        mark_price = html.escape(_fmt_price_by_precision(mark_price_raw, price_prec))
         pnl = html.escape(_fmt_price_2dp(p.get("unPnl")))
         settle = html.escape(str(p.get("settleCoin") or "").strip() or "USDT")
 
@@ -611,8 +633,11 @@ async def _render_positions_text(
         sn = _norm_symbol_for_match(str(p.get("symbol") or ""))
         lev_val = lev_map.get(sn)
         lev = int(lev_val) if isinstance(lev_val, int) and lev_val > 0 else None
-        margin_s = _position_margin_from_formula(vol_raw, mark_price_raw, int(lev) if lev else 0)
-        margin = html.escape(margin_s) if margin_s else html.escape(str(p.get("positionMargin") or "-"))
+        # 持倉保證金：優先 im 或 positionMargin，兩者都無再用公式計算
+        margin_val = _position_margin_from_api(p)
+        if margin_val is None or (isinstance(margin_val, str) and not str(margin_val).strip()):
+            margin_val = _position_margin_from_formula(vol_raw, mark_price_raw, int(lev) if lev else 0)
+        margin = html.escape(_fmt_price_2dp(margin_val) if margin_val is not None and str(margin_val).strip() != "" else "-")
 
         pnl_pct = "-"
         un_pnl_ratio_raw = p.get("unPnlRatio")
@@ -620,7 +645,7 @@ async def _render_positions_text(
             pnl_pct = str(un_pnl_ratio_raw).strip().rstrip("%").strip() or "-"
         if pnl_pct == "-":
             try:
-                m = Decimal(str(p.get("positionMargin") or "0"))
+                m = Decimal(str(margin_val or "0"))
                 u = Decimal(str(p.get("unPnl") or "0"))
                 if m and m != 0:
                     pct = (u / m) * Decimal(100)
@@ -628,7 +653,7 @@ async def _render_positions_text(
             except Exception:
                 pass
 
-        tp_sl_line = _build_tp_sl_for_position(lang, p, plan_list)
+        tp_sl_line = _build_tp_sl_for_position(lang, p, plan_list, base_precision=price_prec)
 
         lines.append(
             t(
@@ -674,6 +699,7 @@ async def _edit_positions_message(
         headers=APP_SETTINGS.platform_api_headers,
         contract_type=2,
         uid=str(platform_uid),
+        wallet=str(APP_SETTINGS.platform_wallet),
         brand=str(APP_SETTINGS.platform_brand),
         symbol=None,
     )
@@ -737,6 +763,7 @@ async def _edit_positions_message(
     except TelegramBadRequest as e:
         if "message is not modified" not in str(e):
             raise
+    await _restore_home_reply_kb(msg, lang)
     return True
 
 
@@ -753,6 +780,7 @@ async def _show_positions(message: types.Message, state: FSMContext, user_id: st
         headers=APP_SETTINGS.platform_api_headers,
         contract_type=2,
         uid=str(platform_uid),
+        wallet=str(APP_SETTINGS.platform_wallet),
         brand=str(APP_SETTINGS.platform_brand),
         symbol=None,
     )
@@ -812,6 +840,7 @@ async def _show_positions(message: types.Message, state: FSMContext, user_id: st
     await state.update_data(positions_snapshot_ts=int(time.time()), positions_snapshot_token=str(token))
     kb = _kb_positions(lang, items, page, page_size, snapshot_token=token, confirm_close_all=False)
     await message.answer(text, reply_markup=kb, disable_web_page_preview=True)
+    await _restore_home_reply_kb(message, lang)
 
 def _kb_open_orders(
     lang: str,
@@ -864,6 +893,7 @@ async def _render_open_orders_text(
     *,
     leverage_by_symbol: dict[str, Optional[int]],
     market_info_by_symbol: Optional[dict[str, tuple[Any, Any]]] = None,
+    base_precision_by_symbol: Optional[dict[str, Optional[int]]] = None,
 ) -> str:
     total = len(orders)
     pages = max(1, (total + page_size - 1) // page_size)
@@ -871,6 +901,7 @@ async def _render_open_orders_text(
     start = page * page_size
     chunk = orders[start : start + page_size]
     market_info = market_info_by_symbol or {}
+    price_prec_map = base_precision_by_symbol or {}
 
     lines: list[str] = []
     lines.append(t(lang, "orders_title"))
@@ -886,7 +917,7 @@ async def _render_open_orders_text(
         sym_key = _norm_symbol_for_match(sym_raw)
         sym = html.escape(sym_raw)
         price_val = o.get("price")
-        price = html.escape(str(price_val or "-"))
+        price = html.escape(_fmt_price_by_precision(price_val, price_prec_map.get(sym_key)))
         ct = html.escape(_fmt_order_time(o.get("createTime") or o.get("updateTime")))
         side_label = html.escape(_oo_side_label(lang, o.get("side")))
         lev = leverage_by_symbol.get(sym_key)
@@ -963,6 +994,7 @@ async def _edit_open_orders_message(
             symbols.append(s)
     leverage_by_symbol: dict[str, Optional[int]] = {}
     market_info_by_symbol: dict[str, tuple[Any, Any]] = {}
+    base_precision_by_symbol: dict[str, Optional[int]] = {}
 
     for s in symbols:
         sn = _norm_symbol_for_match(s)
@@ -972,6 +1004,7 @@ async def _edit_open_orders_message(
                 getattr(ci, "contract_factor", None),
                 getattr(ci, "fee_rate_taker", None),
             )
+            base_precision_by_symbol[sn] = getattr(ci, "base_precision", None)
         ok_lev, lev_json, lev_err = await fetch_trade_leverage(
             base_url=str(APP_SETTINGS.platform_api_base_url),
             headers=APP_SETTINGS.platform_api_headers,
@@ -997,6 +1030,7 @@ async def _edit_open_orders_message(
         page_size,
         leverage_by_symbol=leverage_by_symbol,
         market_info_by_symbol=market_info_by_symbol,
+        base_precision_by_symbol=base_precision_by_symbol,
     )
     token = _b36_ts()
     await state.update_data(open_orders_snapshot_ts=int(time.time()), open_orders_snapshot_token=str(token))
@@ -1006,6 +1040,7 @@ async def _edit_open_orders_message(
     except TelegramBadRequest as e:
         if "message is not modified" not in str(e):
             raise
+    await _restore_home_reply_kb(msg, lang)
     return True
 
 async def _show_open_orders(message: types.Message, state: FSMContext, user_id: str, lang: str, page: int) -> None:
@@ -1042,6 +1077,7 @@ async def _show_open_orders(message: types.Message, state: FSMContext, user_id: 
             symbols.append(s)
     leverage_by_symbol: dict[str, Optional[int]] = {}
     market_info_by_symbol: dict[str, tuple[Any, Any]] = {}
+    base_precision_by_symbol: dict[str, Optional[int]] = {}
 
     for s in symbols:
         sn = _norm_symbol_for_match(s)
@@ -1051,6 +1087,7 @@ async def _show_open_orders(message: types.Message, state: FSMContext, user_id: 
                 getattr(ci, "contract_factor", None),
                 getattr(ci, "fee_rate_taker", None),
             )
+            base_precision_by_symbol[sn] = getattr(ci, "base_precision", None)
         ok_lev, lev_json, _ = await fetch_trade_leverage(
             base_url=str(APP_SETTINGS.platform_api_base_url),
             headers=APP_SETTINGS.platform_api_headers,
@@ -1076,11 +1113,13 @@ async def _show_open_orders(message: types.Message, state: FSMContext, user_id: 
         page_size,
         leverage_by_symbol=leverage_by_symbol,
         market_info_by_symbol=market_info_by_symbol,
+        base_precision_by_symbol=base_precision_by_symbol,
     )
     token = _b36_ts()
     await state.update_data(open_orders_snapshot_ts=int(time.time()), open_orders_snapshot_token=str(token))
     kb = _kb_open_orders(lang, items, page, page_size, snapshot_token=token, confirm_cancel_all=False)
     await message.answer(text, reply_markup=kb, disable_web_page_preview=True)
+    await _restore_home_reply_kb(message, lang)
 
 
 async def _show_home_menu(message: types.Message, *, user_id: Optional[str] = None) -> None:
@@ -1161,7 +1200,7 @@ def _dec(v: Any) -> Optional[Decimal]:
 
 
 def _fmt_price_2dp(v: Any) -> str:
-    """數值四捨五入到小數第二位；非數值或空回傳 '-'"""
+    """數值四捨五入到小數第二位；非數值或空回傳 '-'（用於保證金/持倉價值等）"""
     if v is None or v == "":
         return "-"
     try:
@@ -1169,6 +1208,44 @@ def _fmt_price_2dp(v: Any) -> str:
         return f"{d.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP):f}"
     except (InvalidOperation, ValueError, TypeError):
         return "-"
+
+
+def _fmt_price_by_precision(v: Any, precision: Optional[int]) -> str:
+    """依小數位數格式化價格；precision 為 None 時用 2 位。用於開倉價、標記價、強平價等。"""
+    if v is None or v == "":
+        return "-"
+    try:
+        d = Decimal(str(v))
+        if precision is None or precision < 0:
+            precision = 2
+        q = Decimal(10) ** -int(precision)
+        return f"{d.quantize(q, rounding=ROUND_HALF_UP):f}"
+    except (InvalidOperation, ValueError, TypeError):
+        return "-"
+
+
+def _fmt_liq_price(v: Any, precision: Optional[int] = None) -> str:
+    """強平價格：空、0 或無效時回傳 '-'，否則依 precision 格式化（None 則 2 位）"""
+    if v is None or v == "":
+        return "-"
+    try:
+        d = Decimal(str(v))
+        if d == 0:
+            return "-"
+        return _fmt_price_by_precision(v, precision)
+    except (InvalidOperation, ValueError, TypeError):
+        return "-"
+
+
+def _fmt_balance_2dp(v: Any) -> str:
+    """餘額顯示：小數第二位截斷、固定小數格式（不出現科學符號），與價格展示一致"""
+    if v is None or v == "":
+        return "0.00"
+    try:
+        d = Decimal(str(v))
+        return f"{d.quantize(Decimal('0.01'), rounding=ROUND_DOWN):f}"
+    except (InvalidOperation, ValueError, TypeError):
+        return "0.00"
 
 
 def _compute_qty(
@@ -1217,9 +1294,20 @@ def _compute_qty(
     return q.to_integral_value(rounding=ROUND_DOWN)
 
 
+def _position_margin_from_api(p: dict[str, Any]) -> Any:
+    """
+    持倉保證金：優先用 im 或 positionMargin（兩者其一有值即可，正常兩字段值相同）。
+    若兩者都無有效值，由呼叫方用公式計算。
+    """
+    v = p.get("im")
+    if v is not None and str(v).strip() != "":
+        return v
+    return p.get("positionMargin")
+
+
 def _position_margin_from_formula(volume: Any, mark_price: Any, leverage: int) -> Optional[str]:
     """
-    持倉保證金：volume（已為面值×張數）× 標記價格 / 槓桿倍數
+    持倉保證金：volume（已為面值×張數）× 標記價格 / 槓桿倍數。當 im/positionMargin 都無值時作為 fallback。
     """
     v = _dec(volume)
     mp = _dec(mark_price)
@@ -1383,18 +1471,18 @@ async def _ensure_signal_alive(state: FSMContext) -> tuple[bool, Optional[str]]:
     回傳 (ok, reason_message)。
     """
     if APP_SETTINGS is None:
-        return False, "系統尚未完成初始化，請稍後再試。"
+        return False, "init_not_ready"
     data = await state.get_data()
     post_id = data.get("post_id")
     announced_at = data.get("announced_at")
     if not post_id or not announced_at:
-        return False, "狀態已失效，請回到頻道重新點擊『一鍵跟單』。"
+        return False, "flow_state_expired"
     try:
         announced_dt = datetime.fromisoformat(str(announced_at))
     except Exception:
-        return False, "狀態已失效，請回到頻道重新點擊『一鍵跟單』。"
+        return False, "flow_state_expired"
     if _is_expired(announced_dt, APP_SETTINGS.signal_ttl_seconds):
-        return False, "当前信号已失效（超过有效期），无法继续操作。请回到频道查看最新信号。"
+        return False, "flow_signal_expired_ttl"
     return True, None
 
 
@@ -1444,33 +1532,42 @@ def _fmt_dt(dt: datetime) -> str:
     return _normalize_dt(dt).astimezone(_tz8()).strftime("%Y-%m-%d %H:%M")
 
 
-def _fmt_signal_card_html(payload: dict[str, Any], post_id: str, announced_at: datetime, ttl_seconds: int) -> str:
+def _fmt_signal_card_html(
+    payload: dict[str, Any], post_id: str, announced_at: datetime, ttl_seconds: int, lang: str
+) -> str:
     f = extract_signal_fields(payload)
     expire_at = _normalize_dt(announced_at) + timedelta(seconds=int(ttl_seconds))
 
-    title = str(payload.get("title") or payload.get("name") or payload.get("symbol") or "交易信号").strip()
+    title = str(payload.get("title") or payload.get("name") or payload.get("symbol") or t(lang, "signal_title_default")).strip()
     title = html.escape(title)
 
     lines: list[str] = []
     lines.append(f"<b>{title}</b>")
     lines.append("──────────")
-    lines.append(f"<b>信号ID</b>：<code>{html.escape(post_id)}</code>")
+    lines.append(f"<b>{t(lang, 'signal_id')}</b>：<code>{html.escape(post_id)}</code>")
     if f.get("symbol"):
-        lines.append(f"<b>交易对</b>：<code>{html.escape(str(f['symbol']))}</code>")
+        lines.append(f"<b>{t(lang, 'signal_trading_pair')}</b>：<code>{html.escape(str(f['symbol']))}</code>")
     if f.get("direction"):
-        lines.append(f"<b>方向</b>：{html.escape(str(f['direction']))}")
+        raw = str(f["direction"]).strip().lower()
+        if raw in ("多", "long", "buy", "up", "bull", "做多"):
+            dir_display = t(lang, "direction_long")
+        elif raw in ("空", "short", "sell", "down", "bear", "做空"):
+            dir_display = t(lang, "direction_short")
+        else:
+            dir_display = html.escape(str(f["direction"]))
+        lines.append(f"<b>{t(lang, 'signal_direction')}</b>：{dir_display}")
     if f.get("entry") is not None:
-        lines.append(f"<b>进场价格</b>：{html.escape(str(f['entry']))}")
+        lines.append(f"<b>{t(lang, 'signal_entry_price')}</b>：{html.escape(str(f['entry']))}")
     if f.get("tp") is not None:
-        lines.append(f"<b>止盈价格</b>：{html.escape(str(f['tp']))}")
+        lines.append(f"<b>{t(lang, 'signal_take_profit')}</b>：{html.escape(str(f['tp']))}")
     if f.get("sl") is not None:
-        lines.append(f"<b>止损价格</b>：{html.escape(str(f['sl']))}")
+        lines.append(f"<b>{t(lang, 'signal_stop_loss')}</b>：{html.escape(str(f['sl']))}")
 
     if ttl_seconds % 3600 == 0:
-        ttl_label = f"{ttl_seconds // 3600}小时"
+        ttl_label = t(lang, "signal_validity_hours", n=ttl_seconds // 3600)
     else:
-        ttl_label = f"{ttl_seconds}秒"
-    lines.append(f"<b>有效期</b>：{html.escape(ttl_label)}（截止 {html.escape(_fmt_dt(expire_at))}）")
+        ttl_label = t(lang, "signal_validity_seconds", n=ttl_seconds)
+    lines.append(f"<b>{t(lang, 'signal_validity')}</b>：{html.escape(ttl_label)}（{t(lang, 'signal_validity_until', dt=html.escape(_fmt_dt(expire_at)))}）")
     return "\n".join(lines)
 
 
@@ -1514,7 +1611,7 @@ def _kb_confirm_i18n(lang: str) -> InlineKeyboardMarkup:
 
 
 async def _prompt_amount(message: types.Message, state: FSMContext, lang: str, balance: Optional[float] = None) -> None:
-    bal_line = t(lang, "flow_balance_line", balance=f"{balance:g}") if balance is not None else ""
+    bal_line = t(lang, "flow_balance_line", balance=_fmt_balance_2dp(balance)) if balance is not None else ""
     msg = await message.answer(
         t(lang, "flow_amount_prompt", bal_line=bal_line),
         reply_markup=ForceReply(selective=True, input_field_placeholder=t(lang, "flow_amount_force_reply_placeholder")),
@@ -1526,7 +1623,8 @@ async def _set_amount_and_ask_leverage(chat: types.Message, state: FSMContext, u
     ok, reason = await _ensure_signal_alive(state)
     if not ok:
         await state.clear()
-        await chat.answer(reason or "当前信号失效，无法操作。")
+        lang = await _get_lang(user_id)
+        await chat.answer(t(lang, reason or "flow_signal_expired_generic"))
         return
 
     balance = await _get_available_balance_usdt(user_id, state=state)
@@ -1534,9 +1632,30 @@ async def _set_amount_and_ask_leverage(chat: types.Message, state: FSMContext, u
         await chat.answer(t(await _get_lang(user_id), "bind_alert"))
         return
     lang = await _get_lang(user_id)
-    if balance < amount:
-        kb = _mk_kb([[_btn(t(lang, "flow_btn_cancel"), "flow:cancel")]])
-        await chat.answer("下单失败：余额不足，请充值。", reply_markup=kb)
+    balance_f = float(balance)
+    amount_f = float(amount)
+    _ilog("amount_balance_check", user_id=user_id, balance=balance_f, amount=amount_f, insufficient=balance_f < amount_f)
+    if balance_f < amount_f:
+        _ilog("insufficient_balance_enter", user_id=user_id, chat_id=chat.chat.id)
+        err_text = t(lang, "flow_insufficient_balance")
+        kb = _mk_kb([_btn(t(lang, "flow_btn_cancel"), "flow:cancel")])
+        try:
+            await chat.bot.send_message(chat_id=chat.chat.id, text=err_text, reply_markup=kb)
+        except Exception as e:
+            _ilog("insufficient_balance_send_error", user_id=user_id, error=str(e))
+            raise
+        try:
+            bal_line = t(lang, "flow_balance_line", balance=_fmt_balance_2dp(balance_f))
+            msg_reprompt = await chat.bot.send_message(
+                chat_id=chat.chat.id,
+                text=t(lang, "flow_amount_prompt", bal_line=bal_line),
+                reply_markup=ForceReply(selective=True, input_field_placeholder=t(lang, "flow_amount_force_reply_placeholder")),
+            )
+            await state.update_data(amount_prompt_message_id=msg_reprompt.message_id)
+        except Exception as e:
+            _ilog("insufficient_balance_reprompt_error", user_id=user_id, error=str(e))
+            raise
+        _ilog("insufficient_balance_done", user_id=user_id)
         return
 
     await state.update_data(amount=amount)
@@ -1552,7 +1671,7 @@ async def _set_leverage_and_show_confirm(chat: types.Message, state: FSMContext,
     ok, reason = await _ensure_signal_alive(state)
     if not ok:
         await state.clear()
-        await chat.answer(reason or "当前信号失效，无法操作。")
+        await chat.answer(t(lang, reason or "flow_signal_expired_generic"))
         return
 
     data = await state.get_data()
@@ -1561,21 +1680,22 @@ async def _set_leverage_and_show_confirm(chat: types.Message, state: FSMContext,
     amount = data.get("amount")
     if not post_id or amount is None:
         await state.clear()
-        await chat.answer("状态已失效，请回到频道重新点击「一键跟单」。")
+        lang = await _get_lang(user_id)
+        await chat.answer(t(lang, "flow_state_expired"))
         return
 
     await state.update_data(leverage=lev)
     await state.set_state(CopyFlow.waiting_submit)
 
     announced_at = datetime.fromisoformat(str(data.get("announced_at")))
-    signal_card = _fmt_signal_card_html(payload, post_id, announced_at, APP_SETTINGS.signal_ttl_seconds if APP_SETTINGS else 86400)
-    confirm_text = (
-        "请确认订单信息：\n\n"
-        f"{signal_card}\n\n"
-        f"<b>跟单金额</b>：<code>{float(amount):g}</code> USDT\n"
-        f"<b>杠杆倍数</b>：<code>{lev}</code>x"
-    )
     lang = await _get_lang(user_id)
+    signal_card = _fmt_signal_card_html(payload, post_id, announced_at, APP_SETTINGS.signal_ttl_seconds if APP_SETTINGS else 86400, lang)
+    confirm_text = (
+        t(lang, "flow_confirm_prompt")
+        + f"{signal_card}\n\n"
+        + f"<b>{t(lang, 'flow_confirm_amount')}</b>：<code>{float(amount):g}</code> USDT\n"
+        + f"<b>{t(lang, 'flow_confirm_leverage')}</b>：<code>{lev}</code>x"
+    )
 
     # 校驗 quantity 是否落在交易對限制內（LIMIT 走 maxDelegateNum/minDelegateNum）
     sym = _norm_symbol_for_exinfo(extract_signal_fields(payload).get("symbol"))
@@ -1603,9 +1723,11 @@ async def _set_leverage_and_show_confirm(chat: types.Message, state: FSMContext,
 
 @router.message(CommandStart())
 async def start(message: types.Message, state: FSMContext, command: CommandObject) -> None:
+    user_id = str(message.from_user.id) if message.from_user else "0"
+    lang = await _get_lang(user_id)
     # 深連結必須在私訊完成互動
     if message.chat.type != "private":
-        await message.reply("請點擊頻道訊息中的按鈕，並在與機器人的私訊中完成跟單流程。")
+        await message.reply(t(lang, "flow_channel_hint"))
         return
 
     await state.clear()
@@ -1624,11 +1746,8 @@ async def start(message: types.Message, state: FSMContext, command: CommandObjec
     follow_id = _extract_follow_order_id_from_start_args(args)
     if follow_id is not None:
         if APP_SETTINGS is None:
-            await message.reply("系统尚未完成初始化，请稍后再试。")
+            await message.reply(t(lang, "init_not_ready"))
             return
-
-        user_id = str(message.from_user.id) if message.from_user else "0"
-        lang = await _get_lang(user_id)
 
         _ilog(
             "start_deeplink",
@@ -1642,7 +1761,7 @@ async def start(message: types.Message, state: FSMContext, command: CommandObjec
             follow_id,
         )
         if item is None:
-            await message.reply("获取信号详情失败（可能已过期或不存在）。请回到频道查看最新信号。")
+            await message.reply(t(lang, "flow_fetch_signal_fail"))
             return
 
         ts = item.get("update_time") or item.get("create_time")
@@ -1652,7 +1771,7 @@ async def start(message: types.Message, state: FSMContext, command: CommandObjec
             announced_at = datetime.now(timezone.utc)
 
         if _is_expired(announced_at, APP_SETTINGS.signal_ttl_seconds):
-            await message.reply("当前信号已失效（超过有效期），无法跟单。请回到频道查看最新信号。")
+            await message.reply(t(lang, "flow_signal_expired_deeplink"))
             return
 
         post_id = str(item.get("id") or follow_id)
@@ -1665,7 +1784,7 @@ async def start(message: types.Message, state: FSMContext, command: CommandObjec
         )
         await state.set_state(CopyFlow.waiting_entry)
 
-        signal_card = _fmt_signal_card_html(payload, post_id, announced_at, APP_SETTINGS.signal_ttl_seconds)
+        signal_card = _fmt_signal_card_html(payload, post_id, announced_at, APP_SETTINGS.signal_ttl_seconds, lang)
         image_url = extract_image_url(payload)
         # 入口：先檢查是否綁定，直接把按鈕附在信號卡片訊息上
         is_bound, _platform_uid, verify_url = await _get_binding_status(user_id)
@@ -1674,12 +1793,11 @@ async def start(message: types.Message, state: FSMContext, command: CommandObjec
             await message.answer_photo(photo=image_url, caption=signal_card, reply_markup=kb)
         else:
             await message.reply(signal_card, disable_web_page_preview=True, reply_markup=kb)
+        # 信號卡片送出後也顯示首頁底部鍵盤，方便使用者立即查看訂單/倉位
+        await _show_home_menu(message, user_id=user_id)
         return
 
-    await message.reply(
-        "已啟動。請到公開頻道點擊『一鍵跟單』按鈕開始。\n\n"
-        "指令：/balance 查詢餘額"
-    )
+    await message.reply(t(lang, "start_prompt"))
     await _show_home_menu(message, user_id=str(message.from_user.id) if message.from_user else "0")
 
 
@@ -1698,7 +1816,7 @@ async def handle_home_buttons(message: types.Message, state: FSMContext) -> None
         if bal is None:
             await message.answer(t(lang, "bind_alert"), reply_markup=_kb_entry(lang, is_bound=False, verify_url=None))
             return
-        await message.answer(t(lang, "balance", balance=f"{bal:g}"), reply_markup=_home_reply_kb(lang))
+        await message.answer(t(lang, "balance", balance=_fmt_balance_2dp(bal)), reply_markup=_home_reply_kb(lang))
         return
 
     if text == t(lang, "btn_orders") or text in {t("zh-TW", "btn_orders"), t("zh-CN", "btn_orders"), t("en", "btn_orders")}:
@@ -1737,11 +1855,13 @@ async def handle_home_buttons(message: types.Message, state: FSMContext) -> None
 @router.callback_query(lambda c: bool(c.data) and c.data.startswith("lang:set:"))
 async def cb_set_language(callback: types.CallbackQuery) -> None:
     if callback.message.chat.type != "private":
-        await callback.answer("請在私訊操作", show_alert=True)
+        lang = await _get_lang(str(callback.from_user.id)) if callback.from_user else "en"
+        await callback.answer(t(lang, "flow_private_only_alert"), show_alert=True)
         return
     code = callback.data.split(":")[-1].strip()
     if code not in {x[0] for x in SUPPORTED_LANGS}:
-        await callback.answer("不支援的語言", show_alert=True)
+        lang = await _get_lang(str(callback.from_user.id)) if callback.from_user else "en"
+        await callback.answer(t(lang, "flow_unsupported_lang"), show_alert=True)
         return
     user_id = str(callback.from_user.id)
     await set_user_language(user_id, code)
@@ -1753,7 +1873,7 @@ async def cb_set_language(callback: types.CallbackQuery) -> None:
 @router.callback_query(lambda c: c.data == "bind:refresh")
 async def cb_bind_refresh(callback: types.CallbackQuery, state: FSMContext) -> None:
     if callback.message.chat.type != "private":
-        await callback.answer(t("zh-TW", "flow_private_only"), show_alert=True)
+        await callback.answer(t("en", "flow_private_only"), show_alert=True)
         return
     user_id = str(callback.from_user.id)
     lang = await _get_lang(user_id)
@@ -1779,7 +1899,7 @@ async def cb_bind_refresh(callback: types.CallbackQuery, state: FSMContext) -> N
     ok, reason = await _ensure_signal_alive(state)
     if not ok:
         await state.clear()
-        await callback.message.answer(reason or "当前信号已失效，无法操作。")
+        await callback.message.answer(t(lang, reason or "flow_signal_expired_generic"))
         await callback.answer()
         return
 
@@ -1795,7 +1915,7 @@ async def cb_bind_refresh(callback: types.CallbackQuery, state: FSMContext) -> N
 @router.callback_query(lambda c: c.data == "flow:begin_copy")
 async def cb_begin_copy(callback: types.CallbackQuery, state: FSMContext) -> None:
     if callback.message.chat.type != "private":
-        await callback.answer(t("zh-TW", "flow_private_only"), show_alert=True)
+        await callback.answer(t("en", "flow_private_only"), show_alert=True)
         return
     user_id = str(callback.from_user.id)
     lang = await _get_lang(user_id)
@@ -1818,7 +1938,7 @@ async def cb_begin_copy(callback: types.CallbackQuery, state: FSMContext) -> Non
     ok, reason = await _ensure_signal_alive(state)
     if not ok:
         await state.clear()
-        await callback.message.answer(reason or "当前信号已失效，无法操作。")
+        await callback.message.answer(t(lang, reason or "flow_signal_expired_generic"))
         await callback.answer()
         return
 
@@ -1831,11 +1951,25 @@ async def cb_begin_copy(callback: types.CallbackQuery, state: FSMContext) -> Non
 async def cb_cancel(callback: types.CallbackQuery, state: FSMContext) -> None:
     user_id = str(callback.from_user.id)
     lang = await _get_lang(user_id)
-    data = await state.get_data()
-    confirm_msg_id = data.get("confirm_message_id")
-    if confirm_msg_id is None or callback.message.message_id != confirm_msg_id:
+    current_state = await state.get_state()
+    active_flow_states = {
+        CopyFlow.waiting_entry.state,
+        CopyFlow.waiting_amount.state,
+        CopyFlow.waiting_leverage.state,
+        CopyFlow.waiting_leverage_custom.state,
+        CopyFlow.waiting_submit.state,
+    }
+    if current_state not in active_flow_states:
         await callback.answer(t(lang, "flow_button_expired"), show_alert=True)
         return
+    try:
+        await callback.bot.edit_message_reply_markup(
+            chat_id=callback.message.chat.id,
+            message_id=callback.message.message_id,
+            reply_markup=None,
+        )
+    except Exception:
+        pass
     await state.clear()
     await callback.message.answer(t(lang, "flow_cancelled"))
     await _show_home_menu(callback.message, user_id=user_id)
@@ -1846,7 +1980,7 @@ async def cb_cancel(callback: types.CallbackQuery, state: FSMContext) -> None:
 @router.callback_query(lambda c: bool(c.data) and c.data.startswith("oo:page:"))
 async def cb_open_orders_page(callback: types.CallbackQuery, state: FSMContext) -> None:
     if callback.message.chat.type != "private":
-        await callback.answer(t("zh-TW", "flow_private_only"), show_alert=True)
+        await callback.answer(t("en", "flow_private_only"), show_alert=True)
         return
     user_id = str(callback.from_user.id)
     lang = await _get_lang(user_id)
@@ -1861,7 +1995,7 @@ async def cb_open_orders_page(callback: types.CallbackQuery, state: FSMContext) 
 @router.callback_query(lambda c: bool(c.data) and c.data.startswith("oo:cancel:"))
 async def cb_open_orders_cancel(callback: types.CallbackQuery, state: FSMContext) -> None:
     if callback.message.chat.type != "private":
-        await callback.answer(t("zh-TW", "flow_private_only"), show_alert=True)
+        await callback.answer(t("en", "flow_private_only"), show_alert=True)
         return
     user_id = str(callback.from_user.id)
     lang = await _get_lang(user_id)
@@ -1946,7 +2080,7 @@ async def cb_open_orders_cancel(callback: types.CallbackQuery, state: FSMContext
 @router.callback_query(lambda c: bool(c.data) and c.data.startswith("oo:cancel_all:"))
 async def cb_open_orders_cancel_all(callback: types.CallbackQuery, state: FSMContext) -> None:
     if callback.message.chat.type != "private":
-        await callback.answer(t("zh-TW", "flow_private_only"), show_alert=True)
+        await callback.answer(t("en", "flow_private_only"), show_alert=True)
         return
     user_id = str(callback.from_user.id)
     lang = await _get_lang(user_id)
@@ -1965,7 +2099,7 @@ async def cb_open_orders_cancel_all(callback: types.CallbackQuery, state: FSMCon
 @router.callback_query(lambda c: bool(c.data) and c.data.startswith("oo:cancel_all_back:"))
 async def cb_open_orders_cancel_all_back(callback: types.CallbackQuery, state: FSMContext) -> None:
     if callback.message.chat.type != "private":
-        await callback.answer(t("zh-TW", "flow_private_only"), show_alert=True)
+        await callback.answer(t("en", "flow_private_only"), show_alert=True)
         return
     user_id = str(callback.from_user.id)
     lang = await _get_lang(user_id)
@@ -1984,7 +2118,7 @@ async def cb_open_orders_cancel_all_back(callback: types.CallbackQuery, state: F
 @router.callback_query(lambda c: bool(c.data) and c.data.startswith("oo:cancel_all_confirm:"))
 async def cb_open_orders_cancel_all_confirm(callback: types.CallbackQuery, state: FSMContext) -> None:
     if callback.message.chat.type != "private":
-        await callback.answer(t("zh-TW", "flow_private_only"), show_alert=True)
+        await callback.answer(t("en", "flow_private_only"), show_alert=True)
         return
     user_id = str(callback.from_user.id)
     lang = await _get_lang(user_id)
@@ -2098,7 +2232,7 @@ async def cb_open_orders_cancel_all_confirm(callback: types.CallbackQuery, state
 @router.callback_query(lambda c: bool(c.data) and c.data.startswith("pos:page:"))
 async def cb_positions_page(callback: types.CallbackQuery, state: FSMContext) -> None:
     if callback.message.chat.type != "private":
-        await callback.answer(t("zh-TW", "flow_private_only"), show_alert=True)
+        await callback.answer(t("en", "flow_private_only"), show_alert=True)
         return
     user_id = str(callback.from_user.id)
     lang = await _get_lang(user_id)
@@ -2114,7 +2248,7 @@ async def cb_positions_page(callback: types.CallbackQuery, state: FSMContext) ->
 async def cb_position_close(callback: types.CallbackQuery, state: FSMContext) -> None:
     """單筆平倉"""
     if callback.message.chat.type != "private":
-        await callback.answer(t("zh-TW", "flow_private_only"), show_alert=True)
+        await callback.answer(t("en", "flow_private_only"), show_alert=True)
         return
     user_id = str(callback.from_user.id)
     lang = await _get_lang(user_id)
@@ -2139,6 +2273,7 @@ async def cb_position_close(callback: types.CallbackQuery, state: FSMContext) ->
         headers=APP_SETTINGS.platform_api_headers,
         contract_type=2,
         uid=str(platform_uid),
+        wallet=str(APP_SETTINGS.platform_wallet),
         brand=str(APP_SETTINGS.platform_brand),
         symbol=None,
     )
@@ -2174,7 +2309,7 @@ async def cb_position_close(callback: types.CallbackQuery, state: FSMContext) ->
 async def cb_position_close_all(callback: types.CallbackQuery, state: FSMContext) -> None:
     """一鍵平倉：顯示二次確認"""
     if callback.message.chat.type != "private":
-        await callback.answer(t("zh-TW", "flow_private_only"), show_alert=True)
+        await callback.answer(t("en", "flow_private_only"), show_alert=True)
         return
     user_id = str(callback.from_user.id)
     lang = await _get_lang(user_id)
@@ -2194,7 +2329,7 @@ async def cb_position_close_all(callback: types.CallbackQuery, state: FSMContext
 async def cb_position_close_all_back(callback: types.CallbackQuery, state: FSMContext) -> None:
     """一鍵平倉：返回"""
     if callback.message.chat.type != "private":
-        await callback.answer(t("zh-TW", "flow_private_only"), show_alert=True)
+        await callback.answer(t("en", "flow_private_only"), show_alert=True)
         return
     user_id = str(callback.from_user.id)
     lang = await _get_lang(user_id)
@@ -2211,7 +2346,7 @@ async def cb_position_close_all_back(callback: types.CallbackQuery, state: FSMCo
 async def cb_position_close_all_confirm(callback: types.CallbackQuery, state: FSMContext) -> None:
     """一鍵平倉：確認執行"""
     if callback.message.chat.type != "private":
-        await callback.answer(t("zh-TW", "flow_private_only"), show_alert=True)
+        await callback.answer(t("en", "flow_private_only"), show_alert=True)
         return
     user_id = str(callback.from_user.id)
     lang = await _get_lang(user_id)
@@ -2231,6 +2366,7 @@ async def cb_position_close_all_confirm(callback: types.CallbackQuery, state: FS
         headers=APP_SETTINGS.platform_api_headers,
         contract_type=2,
         uid=str(platform_uid),
+        wallet=str(APP_SETTINGS.platform_wallet),
         brand=str(APP_SETTINGS.platform_brand),
         symbol=None,
     )
@@ -2301,7 +2437,7 @@ async def cb_amount_preset(callback: types.CallbackQuery, state: FSMContext) -> 
     ok, reason = await _ensure_signal_alive(state)
     if not ok:
         await state.clear()
-        await callback.message.answer(reason or "当前信号已失效，无法操作。")
+        await callback.message.answer(t(lang, reason or "flow_signal_expired_generic"))
         await callback.answer()
         return
     await state.set_state(CopyFlow.waiting_amount)
@@ -2315,11 +2451,13 @@ async def cb_amount_preset(callback: types.CallbackQuery, state: FSMContext) -> 
 
 @router.callback_query(lambda c: bool(c.data) and c.data.startswith("flow:lev:"))
 async def cb_leverage_preset(callback: types.CallbackQuery, state: FSMContext) -> None:
+    user_id = str(callback.from_user.id)
+    lang = await _get_lang(user_id)
     lev_raw = callback.data.split(":")[-1]
     try:
         lev = int(lev_raw)
     except ValueError:
-        await callback.answer("槓桿不正確", show_alert=True)
+        await callback.answer(t(lang, "flow_leverage_invalid_alert"), show_alert=True)
         return
     # 依交易對限制校驗槓桿上限
     data = await state.get_data()
@@ -2329,11 +2467,8 @@ async def cb_leverage_preset(callback: types.CallbackQuery, state: FSMContext) -
     sym_api = _symbol_for_backend(extract_signal_fields(payload).get("symbol"), ci)
     max_lev = int(getattr(ci, "leverage_level", 0) or 0) if ci else 0
     if max_lev and lev > max_lev:
-        lang = await _get_lang(str(callback.from_user.id))
         await callback.answer(t(lang, "lev_too_high", max_lev=max_lev), show_alert=True)
         return
-    user_id = str(callback.from_user.id)
-    lang = await _get_lang(user_id)
     # 設定槓桿（後端以該值下單）
     ok_set, err = await _set_symbol_leverage(
         user_id=user_id,
@@ -2374,7 +2509,7 @@ async def cb_leverage_custom(callback: types.CallbackQuery, state: FSMContext) -
     ok, reason = await _ensure_signal_alive(state)
     if not ok:
         await state.clear()
-        await callback.message.answer(reason or "当前信号已失效，无法操作。")
+        await callback.message.answer(t(lang, reason or "flow_signal_expired_generic"))
         await callback.answer()
         return
     await state.set_state(CopyFlow.waiting_leverage_custom)
@@ -2440,16 +2575,16 @@ async def cb_edit_leverage(callback: types.CallbackQuery, state: FSMContext) -> 
 
 @router.message(CopyFlow.waiting_amount)
 async def on_amount(message: types.Message, state: FSMContext) -> None:
+    user_id = str(message.from_user.id) if message.from_user else "0"
+    lang = await _get_lang(user_id)
     ok, reason = await _ensure_signal_alive(state)
     if not ok:
         await state.clear()
-        await message.reply(reason or "当前信号已失效，无法操作。")
+        await message.reply(t(lang, reason or "flow_signal_expired_generic"))
         return
     data = await state.get_data()
     prompt_id = data.get("amount_prompt_message_id")
     if not isinstance(prompt_id, int) or not message.reply_to_message or message.reply_to_message.message_id != prompt_id:
-        user_id = str(message.from_user.id)
-        lang = await _get_lang(user_id)
         balance = await _get_available_balance_usdt(user_id, state=state)
         await message.reply(t(lang, "flow_amount_reply_mismatch"))
         await _prompt_amount(message, state, lang, balance=balance)
@@ -2457,15 +2592,11 @@ async def on_amount(message: types.Message, state: FSMContext) -> None:
 
     amount = _parse_amount(message.text or "")
     if amount is None:
-        user_id = str(message.from_user.id)
-        lang = await _get_lang(user_id)
         balance = await _get_available_balance_usdt(user_id, state=state)
         await message.reply(t(lang, "flow_amount_invalid"))
         await _prompt_amount(message, state, lang, balance=balance)
         return
 
-    user_id = str(message.from_user.id)
-    lang = await _get_lang(user_id)
     _ilog("amount_input", user_id=user_id, amount=amount)
 
     # 若是從確認頁進來的修改金額：修改後直接回確認頁，保留原本槓桿
@@ -2475,8 +2606,8 @@ async def on_amount(message: types.Message, state: FSMContext) -> None:
             await message.reply(t(lang, "bind_alert"))
             return
         if balance < float(amount):
-            kb = _mk_kb([[_btn(t(lang, "flow_btn_cancel"), "flow:cancel")]])
-            await message.reply("下单失败：余额不足，请充值。", reply_markup=kb)
+            kb = _mk_kb([_btn(t(lang, "flow_btn_cancel"), "flow:cancel")])
+            await message.reply(t(lang, "flow_insufficient_balance"), reply_markup=kb)
             return
         await state.update_data(amount=float(amount), edit_amount_return_confirm=False)
         await _set_leverage_and_show_confirm(message, state, user_id, int(data.get("leverage")))
@@ -2491,7 +2622,7 @@ async def on_leverage(message: types.Message, state: FSMContext) -> None:
     ok, reason = await _ensure_signal_alive(state)
     if not ok:
         await state.clear()
-        await message.reply(reason or "当前信号已失效，无法操作。")
+        await message.reply(t(lang, reason or "flow_signal_expired_generic"))
         return
     user_id = str(message.from_user.id) if message.from_user else "0"
     lang = await _get_lang(user_id)
@@ -2540,7 +2671,7 @@ async def on_leverage_custom(message: types.Message, state: FSMContext) -> None:
     ok, reason = await _ensure_signal_alive(state)
     if not ok:
         await state.clear()
-        await message.reply(reason or "当前信号已失效，无法操作。")
+        await message.reply(t(lang, reason or "flow_signal_expired_generic"))
         return
     data = await state.get_data()
     prompt_id = data.get("leverage_prompt_message_id")
@@ -2609,7 +2740,8 @@ async def on_leverage_custom(message: types.Message, state: FSMContext) -> None:
 @router.callback_query(lambda c: c.data == "flow:submit")
 async def cb_submit(callback: types.CallbackQuery, state: FSMContext) -> None:
     if callback.message.chat.type != "private":
-        await callback.answer("請在私訊完成操作", show_alert=True)
+        lang = await _get_lang(str(callback.from_user.id)) if callback.from_user else "en"
+        await callback.answer(t(lang, "flow_private_operate"), show_alert=True)
         return
 
     user_id = str(callback.from_user.id)
@@ -2623,7 +2755,7 @@ async def cb_submit(callback: types.CallbackQuery, state: FSMContext) -> None:
     ok, reason = await _ensure_signal_alive(state)
     if not ok:
         await state.clear()
-        await callback.message.answer(reason or "当前信号已失效，无法操作。")
+        await callback.message.answer(t(lang, reason or "flow_signal_expired_generic"))
         await callback.answer()
         return
 
@@ -2633,7 +2765,7 @@ async def cb_submit(callback: types.CallbackQuery, state: FSMContext) -> None:
     leverage = data.get("leverage")
     if not post_id or amount is None or leverage is None:
         await state.clear()
-        await callback.message.answer("状态已失效，请回到频道重新点击「一键跟单」。")
+        await callback.message.answer(t(lang, "flow_state_expired"))
         await callback.answer()
         return
 
@@ -2646,13 +2778,13 @@ async def cb_submit(callback: types.CallbackQuery, state: FSMContext) -> None:
         await callback.answer(t(lang, "bind_alert"), show_alert=True)
         return
     if balance < float(amount):
-        await callback.message.answer("下单失败：余额不足，请充值。")
+        await callback.message.answer(t(lang, "flow_insufficient_balance"))
         await callback.answer()
         return
 
     payload = data.get("payload") if isinstance(data.get("payload"), dict) else {}
     if APP_SETTINGS is None or not APP_SETTINGS.platform_api_base_url:
-        await callback.message.answer("系统未配置 PLATFORM_API_BASE_URL，无法下单。")
+        await callback.message.answer(t(lang, "flow_platform_not_configured"))
         await callback.answer()
         return
 
@@ -2769,6 +2901,8 @@ async def cb_submit(callback: types.CallbackQuery, state: FSMContext) -> None:
             )
         except TelegramBadRequest:
             await callback.message.answer(f"{t(lang, 'order_failed')}\n{t(lang, 'reason_line', reason=reason)}")
+        # 下單狀態結束後，直接送出首頁鍵盤（更保險可確保 Telegram Web 套用）
+        await _show_home_menu(callback.message, user_id=user_id)
         await callback.answer()
         return
 
@@ -2797,7 +2931,8 @@ async def cb_submit(callback: types.CallbackQuery, state: FSMContext) -> None:
         )
     except TelegramBadRequest:
         await callback.message.answer(delegated_text)
-    await callback.bot.send_message(chat_id=callback.message.chat.id, text="\u200b", reply_markup=_home_reply_kb(lang))
+    # 委託完成後直接送出首頁鍵盤，方便使用者立刻查訂單/倉位
+    await _show_home_menu(callback.message, user_id=user_id)
 
     await callback.answer()
     await state.clear()
@@ -2806,7 +2941,8 @@ async def cb_submit(callback: types.CallbackQuery, state: FSMContext) -> None:
 @router.message(Command("balance"))
 async def cmd_balance(message: types.Message) -> None:
     if message.chat.type != "private":
-        await message.reply("請在私訊使用此指令。")
+        lang = await _get_lang(str(message.from_user.id)) if message.from_user else "en"
+        await message.reply(t(lang, "cmd_balance_private"))
         return
     user_id = str(message.from_user.id)
     lang = await _get_lang(user_id)
@@ -2814,7 +2950,7 @@ async def cmd_balance(message: types.Message) -> None:
     if balance is None:
         await message.reply(t(lang, "bind_alert"))
         return
-    await message.reply(t(lang, "balance", balance=f"{balance:g}"))
+    await message.reply(t(lang, "balance", balance=_fmt_balance_2dp(balance)))
 
 
 async def main() -> None:

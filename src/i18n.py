@@ -17,7 +17,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "balance": "可用餘額：<code>{balance}</code> USDT",
 
         # Copy / follow order flow
-        "flow_balance_line": "\n当前余额：<code>{balance}</code> USDT",
+        "flow_balance_line": "\n當前餘額：<code>{balance}</code> USDT",
         "flow_amount_prompt": (
             "請輸入保證金金額：\n"
             "例如：1000\n"
@@ -43,16 +43,16 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "flow_leverage_placeholder": "例如：50",
         "flow_leverage_waiting_hint": "請點擊下方快捷槓桿按鈕，或點擊「自訂槓桿」後用回覆框輸入。",
 
-        "flow_cancelled": "下单已取消。",
+        "flow_cancelled": "下單已取消。",
         "flow_button_expired": "該按鈕已過期，請重新發起跟單需求。",
         "flow_use_reply_amount_alert": "請用回覆框輸入保證金金額",
         "flow_private_only": "請在私訊操作",
 
         # Flow buttons
-        "flow_btn_cancel": "取消下单",
-        "flow_btn_edit_amount": "修改金额",
-        "flow_btn_edit_leverage": "修改杠杆",
-        "flow_btn_submit": "确认下单",
+        "flow_btn_cancel": "取消下單",
+        "flow_btn_edit_amount": "修改金額",
+        "flow_btn_edit_leverage": "修改槓桿",
+        "flow_btn_submit": "確認下單",
         "flow_btn_custom_leverage": "自訂槓桿",
 
         # Binding
@@ -66,6 +66,43 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "entry_bound_prompt": "已驗證完成，點擊下方按鈕開始跟單：",
         "entry_unbound_prompt": "請先完成 BYDFi 驗證後再進行跟單：",
         "entry_one_click_btn": "一鍵跟單",
+
+        # Signal card (follow-order message)
+        "signal_title_default": "交易信號",
+        "signal_id": "信號ID",
+        "signal_trading_pair": "交易對",
+        "signal_direction": "方向",
+        "direction_long": "多",
+        "direction_short": "空",
+        "signal_entry_price": "進場價格",
+        "signal_take_profit": "止盈價格",
+        "signal_stop_loss": "止損價格",
+        "signal_validity": "有效期",
+        "signal_validity_hours": "{n}小時",
+        "signal_validity_seconds": "{n}秒",
+        "signal_validity_until": "截止 {dt}",
+
+        # Confirm order (copy flow)
+        "flow_confirm_prompt": "請確認訂單資訊：\n\n",
+        "flow_confirm_amount": "跟單金額",
+        "flow_confirm_leverage": "槓桿倍數",
+
+        # Flow / signal errors & hints
+        "init_not_ready": "系統尚未完成初始化，請稍後再試。",
+        "flow_state_expired": "狀態已失效，請回到頻道重新點擊『一鍵跟單』。",
+        "flow_signal_expired_ttl": "當前信號已失效（超過有效期），無法繼續操作。請回到頻道查看最新信號。",
+        "flow_signal_expired_generic": "當前信號失效，無法操作。",
+        "flow_fetch_signal_fail": "獲取信號詳情失敗（可能已過期或不存在）。請回到頻道查看最新信號。",
+        "flow_signal_expired_deeplink": "當前信號已失效（超過有效期），無法跟單。請回到頻道查看最新信號。",
+        "start_prompt": "已啟動。請到公開頻道點擊『一鍵跟單』按鈕開始。\n\n指令：/balance 查詢餘額",
+        "flow_insufficient_balance": "下單失敗：餘額不足，請充值。",
+        "flow_private_only_alert": "請在私訊操作",
+        "flow_unsupported_lang": "不支援的語言",
+        "flow_leverage_invalid_alert": "槓桿不正確",
+        "flow_private_operate": "請在私訊完成操作",
+        "flow_platform_not_configured": "系統未配置 PLATFORM_API_BASE_URL，無法下單。",
+        "flow_channel_hint": "請點擊頻道訊息中的按鈕，並在與機器人的私訊中完成跟單流程。",
+        "cmd_balance_private": "請在私訊使用此指令。",
 
         # Exchange info validation
         "exinfo_unavailable": "暫時無法取得交易對限制資訊，請稍後再試。",
@@ -87,8 +124,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "api_err_514": "重複請求",
         "api_err_515": "無權限",
         "api_err_600": "參數錯誤",
-        "api_err_1002": "交易對不支持",
-        "api_err_1003": "幣種不支持",
+        "api_err_1002": "交易對不支援",
+        "api_err_1003": "幣種不支援",
         "api_err_1005": "帳戶餘額不足",
         "api_err_2001": "暫停交易",
         "api_err_2021": "行情錯誤",
@@ -97,22 +134,22 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "api_err_100012": "保證金不夠",
         "api_err_100014": "訂單不存在",
         "api_err_100019": "無資產",
-        "api_err_100051": "杠桿超出上限",
+        "api_err_100051": "槓桿超出上限",
         "api_err_200008": "合約不存在",
-        "api_err_200009": "合約暫不支持該幣種",
+        "api_err_200009": "合約暫不支援該幣種",
         "api_err_200014": "撤單失敗：用戶不匹配",
         "api_err_200015": "用戶資產不足",
 
         # Order errors
-        "order_failed": "❌ 下单失败",
+        "order_failed": "❌ 下單失敗",
         "reason_line": "原因: {reason}",
-        "unknown_error": "未知错误",
+        "unknown_error": "未知錯誤",
         "order_delegating": "🚀 委託處理中…",
-        "order_delegated_ok": "✅ 委託成功！\n订单ID：<code>{order_id}</code>\n持倉價值：<code>{position_value}</code> USDT\n状态：<b>委託成功</b>",
+        "order_delegated_ok": "✅ 委託成功！\n訂單ID：<code>{order_id}</code>\n持倉價值：<code>{position_value}</code> USDT\n狀態：<b>委託成功</b>",
 
         # Open orders
         "orders_loading": "正在查詢中…",
-        "orders_title": "📌 当前委托",
+        "orders_title": "📌 當前委託",
         "orders_empty": "目前沒有委託。",
         "orders_page": "第 {page}/{pages} 頁（共 {total} 筆）",
         "orders_cancel_hint": "點選下方訂單ID可撤單：",
@@ -132,36 +169,36 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "orders_cancel_ok": "撤單成功",
         "orders_cancel_fail": "撤單失敗：{reason}",
         "orders_item": (
-            "💡 <b>订单ID</b>：<code>{order_id}</code>\n"
-            "交易对：<code>{symbol}</code>\n"
+            "💡 <b>訂單ID</b>：<code>{order_id}</code>\n"
+            "交易對：<code>{symbol}</code>\n"
             "方向：{side}\n"
-            "杠杆：<code>{leverage}</code>x\n"
-            "委托价格：<code>{price}</code>\n"
-            "保证金：<code>{margin}</code> USDT\n"
-            "时间：<code>{create_time}</code>"
+            "槓桿：<code>{leverage}</code>x\n"
+            "委託價格：<code>{price}</code>\n"
+            "保證金：<code>{margin}</code> USDT\n"
+            "時間：<code>{create_time}</code>"
         ),
 
         # Positions
         "positions_loading": "正在查詢中…",
-        "positions_title": "📌 当前持仓",
+        "positions_title": "📌 當前持倉",
         "positions_empty": "目前沒有持倉。",
         "positions_page": "第 {page}/{pages} 頁（共 {total} 筆）",
         "positions_refresh": "刷新",
         "positions_prev": "上一頁",
         "positions_next": "下一頁",
         "positions_item": (
-            "💡 <b>交易对</b>：<code>{symbol}</code>\n"
+            "💡 <b>交易對</b>：<code>{symbol}</code>\n"
             "方向：{side}\n"
-            "持仓价值：<code>{holding_value}</code> {settle}\n"
-            "开仓均价：<code>{avg_price}</code>\n"
-            "标记价格：<code>{mark_price}</code>\n"
-            "强平价格：<code>{liq_price}</code>\n"
-            "保证金：<code>{margin}</code> {settle}\n"
-            "未实现盈亏：<code>{pnl}</code> {settle}（{pnl_pct}%）{tp_sl_line}"
+            "持倉價值：<code>{holding_value}</code> {settle}\n"
+            "開倉均價：<code>{avg_price}</code>\n"
+            "標記價格：<code>{mark_price}</code>\n"
+            "強平價格：<code>{liq_price}</code>\n"
+            "保證金：<code>{margin}</code> {settle}\n"
+            "未實現盈虧：<code>{pnl}</code> {settle}（{pnl_pct}%）{tp_sl_line}"
         ),
         "tp_sl_ratio_full": "全平",
         "tp_sl_ratio_partial": "{pct}%",
-        "positions_tp_sl_line": "\n止盈：<code>{tp}</code>  止损：<code>{sl}</code>",
+        "positions_tp_sl_line": "\n止盈：<code>{tp}</code>  止損：<code>{sl}</code>",
         "positions_close_btn": "平倉 {symbol}",
         "positions_close_all_btn": "一鍵平倉",
         "positions_close_all_alert": "⚠️ 將平掉所有持倉。\n\n如確認，請再點一次「確認一鍵平倉」。",
@@ -236,6 +273,43 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "entry_bound_prompt": "已验证完成，点击下方按钮开始跟单：",
         "entry_unbound_prompt": "请先完成 BYDFi 验证后再进行跟单：",
         "entry_one_click_btn": "一键跟单",
+
+        # Signal card (follow-order message)
+        "signal_title_default": "交易信号",
+        "signal_id": "信号ID",
+        "signal_trading_pair": "交易对",
+        "signal_direction": "方向",
+        "direction_long": "多",
+        "direction_short": "空",
+        "signal_entry_price": "进场价格",
+        "signal_take_profit": "止盈价格",
+        "signal_stop_loss": "止损价格",
+        "signal_validity": "有效期",
+        "signal_validity_hours": "{n}小时",
+        "signal_validity_seconds": "{n}秒",
+        "signal_validity_until": "截止 {dt}",
+
+        # Confirm order (copy flow)
+        "flow_confirm_prompt": "请确认订单信息：\n\n",
+        "flow_confirm_amount": "跟单金额",
+        "flow_confirm_leverage": "杠杆倍数",
+
+        # Flow / signal errors & hints
+        "init_not_ready": "系统尚未完成初始化，请稍后再试。",
+        "flow_state_expired": "状态已失效，请回到频道重新点击「一键跟单」。",
+        "flow_signal_expired_ttl": "当前信号已失效（超过有效期），无法继续操作。请回到频道查看最新信号。",
+        "flow_signal_expired_generic": "当前信号失效，无法操作。",
+        "flow_fetch_signal_fail": "获取信号详情失败（可能已过期或不存在）。请回到频道查看最新信号。",
+        "flow_signal_expired_deeplink": "当前信号已失效（超过有效期），无法跟单。请回到频道查看最新信号。",
+        "start_prompt": "已启动。请到公开频道点击「一键跟单」按钮开始。\n\n指令：/balance 查询余额",
+        "flow_insufficient_balance": "下单失败：余额不足，请充值。",
+        "flow_private_only_alert": "请在私讯操作",
+        "flow_unsupported_lang": "不支持的语言",
+        "flow_leverage_invalid_alert": "杠杆不正确",
+        "flow_private_operate": "请在私讯完成操作",
+        "flow_platform_not_configured": "系统未配置 PLATFORM_API_BASE_URL，无法下单。",
+        "flow_channel_hint": "请点击频道消息中的按钮，并在与机器人的私讯中完成跟单流程。",
+        "cmd_balance_private": "请在私讯使用此指令。",
 
         # Exchange info validation
         "exinfo_unavailable": "暂时无法获取交易对限制信息，请稍后再试。",
@@ -346,181 +420,218 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "positions_close_all_fail": "一键平仓失败：{reason}",
     },
     "en": {
-        "menu_prompt": "Choose an action:",
-        "btn_orders": "Open orders",
+        "menu_prompt": "Select Menu",
+        "btn_orders": "Open Orders",
         "btn_positions": "Positions",
-        "btn_balance": "Available balance",
-        "btn_language": "Language",
-        "choose_language": "Choose a language:",
-        "lang_switched": "Language updated.",
-        "no_orders": "No open orders.",
-        "no_positions": "No positions.",
-        "balance": "Available balance: <code>{balance}</code> USDT",
+        "btn_balance": "Available Balance",
+        "btn_language": "Switch Language",
+        "choose_language": "Select Language",
+        "lang_switched": "Language Updated",
+        "no_orders": "No Open Orders",
+        "no_positions": "No Open Positions",
+        "balance": "Available Balance: <code>{balance}</code> USDT",
 
         # Copy / follow order flow (placeholders; user will refine later)
         "flow_balance_line": "\nAvailable balance: <code>{balance}</code> USDT",
         "flow_amount_prompt": (
-            "Please enter the margin amount:\n"
+            "Please enter margin amount:\n"
             "e.g. 1000\n"
-            "‼️ Cost-based order: enter total invested amount; leverage changes won't change cost.\n\n"
-            "Use the reply box and enter numbers only.\n"
+            "‼️ Order by cost: Enter total investment. Changing leverage will not affect cost.\n\n"
+            "Please enter numbers only in the reply box.\n"
             "To cancel, type /cancel.{bal_line}"
         ),
-        "flow_amount_reply_mismatch": "Please reply to my previous margin prompt using the reply box to avoid confusion.",
-        "flow_amount_invalid": "Invalid amount. Please enter numbers only (e.g. 1000 or 12.5).",
+        "flow_amount_reply_mismatch": "Please reply to the \"Please enter margin amount\" message to avoid input errors.",
+        "flow_amount_invalid": "Invalid format. Please enter numbers only (e.g., 1000 or 12.5).",
         "flow_amount_force_reply_placeholder": "e.g. 1000",
 
-        "flow_leverage_select_prompt": "Choose leverage or type a number directly (1 ~ {max_lev}).\ne.g. 100\n\nTo cancel, type /cancel.",
-        "flow_leverage_quick_select": "Or tap a quick-select button below:",
+        "flow_leverage_select_prompt": "Select leverage or enter a number (1 ~ {max_lev}).\ne.g. 100\n\nTo cancel, type /cancel.",
+        "flow_leverage_quick_select": "Or use the quick-select buttons below",
         "flow_leverage_custom_prompt": (
-            "Enter leverage for copy trading: 1 ~ {max_lev}\n"
+            "Enter the copy trading leverage: 1 ~ {max_lev}\n"
             "e.g. 50\n"
             "‼️ High leverage increases liquidation risk. Please assess your risk tolerance.\n\n"
-            "Reply to this message using the reply box.\n"
+            "Please use the 'Reply' function to respond to this message.\n"
             "To cancel, type /cancel."
         ),
-        "flow_leverage_reply_mismatch": "Please reply to this message and enter leverage (1 ~ {max_lev}). e.g. 50",
-        "flow_leverage_invalid": "Invalid leverage. Please enter an integer between 1 and {max_lev}. e.g. 50",
-        "flow_leverage_placeholder": "e.g. 50",
-        "flow_leverage_waiting_hint": "Tap a leverage button below, or tap “Custom leverage” to input via reply box.",
+        "flow_leverage_reply_mismatch": "Please reply to this message with your leverage (1 ~ {max_lev}).",
+        "flow_leverage_invalid": "Invalid format. Please enter an integer between 1 and {max_lev}.",
+        "flow_leverage_placeholder": "e.g., 50",
+        "flow_leverage_waiting_hint": "Select a quick-leverage button below, or click Custom Leverage and reply to this message.",
 
-        "flow_cancelled": "Order cancelled.",
-        "flow_button_expired": "This button has expired. Please initiate a new copy order request.",
-        "flow_use_reply_amount_alert": "Please input margin via reply box",
-        "flow_private_only": "Please use private chat",
+        "flow_cancelled": "Order has been cancelled.",
+        "flow_button_expired": "This button has expired. Please restart the copy-trading request.",
+        "flow_use_reply_amount_alert": "Please reply to this message with the margin amount.",
+        "flow_private_only": "Please proceed in Direct Message (DM).",
 
-        "flow_btn_cancel": "Cancel",
-        "flow_btn_edit_amount": "Edit amount",
-        "flow_btn_edit_leverage": "Edit leverage",
-        "flow_btn_submit": "Confirm",
-        "flow_btn_custom_leverage": "Custom leverage",
+        "flow_btn_cancel": "Cancel Order",
+        "flow_btn_edit_amount": "Edit Amount",
+        "flow_btn_edit_leverage": "Edit Leverage",
+        "flow_btn_submit": "Confirm Order",
+        "flow_btn_custom_leverage": "Custom Leverage",
 
         # Binding
-        "bind_required": "You haven't completed BYDFi verification. Please bind your account before copy trading / placing orders.",
-        "bind_alert": "⚠️ BYDFi verification required.\n\nPlease log in to BYDFi and bind your Telegram ID before continuing.",
-        "bind_jump_btn": "Go to BYDFi",
-        "bind_verify_btn": "BYDFi Verify",
-        "bind_refresh_btn": "I’ve verified (Refresh)",
-        "bind_refresh_still_unbound": "Not bound yet. Please complete verification on the platform and tap refresh again.",
-        "bind_refresh_bound_ok": "Bound successfully. Continuing…",
-        "entry_bound_prompt": "Verified. Tap the button below to start copy trading:",
-        "entry_unbound_prompt": "Please verify with BYDFi before continuing:",
-        "entry_one_click_btn": "One-click copy",
+        "bind_required": "BYDFi verification incomplete. Please bind your account to start copy trading.",
+        "bind_alert": "⚠️ BYDFi Verification Error!\n\nPlease log in to BYDFi and bind your Telegram ID to continue copy trading.",
+        "bind_jump_btn": "Continue on BYDFi",
+        "bind_verify_btn": "BYDFi Verification",
+        "bind_refresh_btn": "BYDFi Verification",
+        "bind_refresh_still_unbound": "Binding failed. Please complete verification on the platform, then click \"Refresh\".",
+        "bind_refresh_bound_ok": "Binding successful. Entering copy trade process...",
+        "entry_bound_prompt": "Verification complete. Click the button below to start copy trading:",
+        "entry_unbound_prompt": "Please complete BYDFi verification before copy trading:",
+        "entry_one_click_btn": "One-Click Copy",
+
+        # Signal card (follow-order message)
+        "signal_title_default": "Trading Signal",
+        "signal_id": "Signal ID",
+        "signal_trading_pair": "Trading Pair",
+        "signal_direction": "Direction",
+        "direction_long": "Long",
+        "direction_short": "Short",
+        "signal_entry_price": "Entry Price",
+        "signal_take_profit": "Take Profit",
+        "signal_stop_loss": "Stop Loss",
+        "signal_validity": "Validity",
+        "signal_validity_hours": "{n}h",
+        "signal_validity_seconds": "{n}s",
+        "signal_validity_until": "until {dt}",
+
+        # Confirm order (copy flow)
+        "flow_confirm_prompt": "Please confirm order details:\n\n",
+        "flow_confirm_amount": "Copy Amount",
+        "flow_confirm_leverage": "Leverage",
+
+        # Flow / signal errors & hints
+        "init_not_ready": "System is initializing. Please try again later.",
+        "flow_state_expired": "Session expired. Please go back to the channel and click \"One-Click Copy\" again.",
+        "flow_signal_expired_ttl": "This signal has expired. Please go back to the channel for the latest signal.",
+        "flow_signal_expired_generic": "Signal expired or invalid. Cannot proceed.",
+        "flow_fetch_signal_fail": "Failed to load signal (expired or not found). Please check the channel for the latest signal.",
+        "flow_signal_expired_deeplink": "This signal has expired. Please go back to the channel for the latest signal.",
+        "start_prompt": "Bot is ready. Go to the public channel and click \"One-Click Copy\" to start.\n\nCommand: /balance — Check balance",
+        "flow_insufficient_balance": "Order failed: Insufficient balance. Please top up.",
+        "flow_private_only_alert": "Please use this in Direct Message.",
+        "flow_unsupported_lang": "Unsupported language",
+        "flow_leverage_invalid_alert": "Invalid leverage",
+        "flow_private_operate": "Please complete this in Direct Message.",
+        "flow_platform_not_configured": "PLATFORM_API_BASE_URL is not configured. Cannot place order.",
+        "flow_channel_hint": "Please click the button in the channel message and complete the flow in DM with the bot.",
+        "cmd_balance_private": "Please use this command in Direct Message.",
 
         # Exchange info validation
-        "exinfo_unavailable": "Unable to load symbol limits right now. Please try again later.",
-        "lev_too_high": "Leverage exceeds symbol limit (max {max_lev}x). Please enter again.",
-        "qty_out_of_range": "Order quantity out of range ({min_qty} ~ {max_qty}). Please adjust amount or leverage.",
-        "lev_set_failed": "Failed to set leverage. Please try again later.",
-        "notional_too_high": "Notional exceeds limit (max {max_notional}). Please reduce leverage or amount.",
+        "exinfo_unavailable": "Unable to fetch symbol limits. Please try again later.",
+        "lev_too_high": "Leverage exceeds limit (Max {max_lev}x). Please re-enter.",
+        "qty_out_of_range": "Order quantity out of range ({min_qty} - {max_qty}). Please adjust amount or leverage.",
+        "lev_set_failed": "Leverage setup failed. Please try again later.",
+        "notional_too_high": "Notional value exceeds limit (Max {max_notional}). Please lower leverage or amount.",
 
         # API errors (platform)
-        "api_err_generic": "API error",
-        "api_err_unknown": "API error",
+        "api_err_generic": "API Error",
+        "api_err_unknown": "API Error",
         "api_err_401": "Unauthorized",
-        "api_err_500": "Internal error",
-        "api_err_501": "System busy",
-        "api_err_506": "Unknown request source",
-        "api_err_510": "Too many requests",
-        "api_err_511": "API access forbidden",
-        "api_err_513": "Invalid request time",
-        "api_err_514": "Duplicate request",
-        "api_err_515": "No permission",
-        "api_err_600": "Parameter error",
-        "api_err_1002": "Trading pair not supported",
-        "api_err_1003": "Currency not supported",
-        "api_err_1005": "Insufficient balance",
-        "api_err_2001": "Trading paused",
-        "api_err_2021": "Market error",
-        "api_err_2022": "Market data is stale",
-        "api_err_2023": "Trading forbidden",
-        "api_err_100012": "Insufficient margin",
-        "api_err_100014": "Order not found",
-        "api_err_100019": "No assets",
-        "api_err_100051": "Leverage exceeds maximum allowed",
-        "api_err_200008": "Contract not found",
-        "api_err_200009": "Contract/currency not supported",
-        "api_err_200014": "Cancel failed: user mismatch",
-        "api_err_200015": "Insufficient user assets",
+        "api_err_500": "Internal System Error",
+        "api_err_501": "System Busy",
+        "api_err_506": "Unknown Request Source",
+        "api_err_510": "Request Too Frequent",
+        "api_err_511": "API Access Forbidden",
+        "api_err_513": "Invalid Request Time",
+        "api_err_514": "Duplicate Request",
+        "api_err_515": "Access Denied",
+        "api_err_600": "Invalid Parameters",
+        "api_err_1002": "Unsupported Trading Pair",
+        "api_err_1003": "Unsupported Coin",
+        "api_err_1005": "Insufficient Balance",
+        "api_err_2001": "Trading Suspended",
+        "api_err_2021": "Market Data Error",
+        "api_err_2022": "Market Data Outdated",
+        "api_err_2023": "Trading Prohibited",
+        "api_err_100012": "Insufficient Margin",
+        "api_err_100014": "Order Does Not Exist",
+        "api_err_100019": "No Assets",
+        "api_err_100051": "Leverage Exceeds Limit",
+        "api_err_200008": "Contract Does Not Exist",
+        "api_err_200009": "Unsupported Coin for Futures Trading",
+        "api_err_200014": "Order Cancellation Failed: User Mismatch",
+        "api_err_200015": "Insufficient User Assets",
 
         # Order errors
-        "order_failed": "❌ Order failed",
+        "order_failed": "❌ Order Failed",
         "reason_line": "Reason: {reason}",
-        "unknown_error": "Unknown error",
-        "order_delegating": "🚀 Submitting order…",
-        "order_delegated_ok": "✅ Order delegated!\nOrder ID: <code>{order_id}</code>\nPosition value: <code>{position_value}</code> USDT\nStatus: <b>Delegated</b>",
+        "unknown_error": "Unknown Error",
+        "order_delegating": "🚀 Order Processing...",
+        "order_delegated_ok": "✅ Order Successful!\nOrder ID: <code>{order_id}</code>\nPosition value: <code>{position_value}</code> USDT\nStatus: <b>Order Successful</b>",
 
         # Open orders
-        "orders_loading": "Loading open orders…",
-        "orders_title": "📌 Open orders",
-        "orders_empty": "No open orders.",
-        "orders_page": "Page {page}/{pages} (total {total})",
-        "orders_cancel_hint": "Tap an order ID below to cancel:",
+        "orders_loading": "Querying...",
+        "orders_title": "📌 Current Open Orders",
+        "orders_empty": "No Open Orders",
+        "orders_page": "Page {page}/{pages} (Total: {total})",
+        "orders_cancel_hint": "Click the Order ID below to cancel the order:",
         "orders_refresh": "Refresh",
-        "orders_prev": "Prev",
-        "orders_next": "Next",
-        "orders_cancel_all_btn": "Cancel all",
-        "orders_cancel_all_confirm_btn": "Confirm cancel all",
+        "orders_prev": "Previous Page",
+        "orders_next": "Next Page",
+        "orders_cancel_all_btn": "Cancel All",
+        "orders_cancel_all_confirm_btn": "Confirm Cancel All",
         "orders_cancel_all_back_btn": "Back",
-        "orders_cancel_all_alert": "⚠️ This will cancel ALL open orders.\n\nIf you’re sure, tap “Confirm cancel all” again.",
-        "orders_cancel_all_done": "All open orders cancelled ({count})",
-        "orders_cancel_all_partial": "Partially cancelled ({ok}/{total}). Please tap Refresh to confirm.",
-        "orders_cancel_all_none": "No open orders to cancel.",
-        "orders_cancel_all_fail": "Cancel all failed: {reason}",
-        "orders_snapshot_expired": "This list is outdated (>{ttl}s). Please tap Refresh before cancelling.",
-        "orders_order_gone": "This order no longer exists / is already filled. Please Refresh the list.",
-        "orders_cancel_ok": "Order cancelled",
-        "orders_cancel_fail": "Cancel failed: {reason}",
+        "orders_cancel_all_alert": "⚠️ All open orders will be cancelled.\n\nIf you’re sure, tap “Confirm cancel all” again.",
+        "orders_cancel_all_done": "All orders have been cancelled (Total: {count})",
+        "orders_cancel_all_partial": "Partially cancelled ({ok}/{total} orders). Please click \"Refresh\" to confirm.",
+        "orders_cancel_all_none": "No cancellable orders found.",
+        "orders_cancel_all_fail": "Cancel All failed: {reason}",
+        "orders_snapshot_expired": "List expired (over {ttl} seconds). Please click \"Refresh\" before cancelling.",
+        "orders_order_gone": "Order no longer exists or has been filled. Please click \"Refresh\" to update.",
+        "orders_cancel_ok": "Cancellation successful",
+        "orders_cancel_fail": "Cancellation failed: {reason}",
         "orders_item": (
             "💡 <b>Order ID</b>: <code>{order_id}</code>\n"
-            "Symbol: <code>{symbol}</code>\n"
+            "Trading Pair: <code>{symbol}</code>\n"
             "Side: {side}\n"
             "Leverage: <code>{leverage}</code>x\n"
-            "Price: <code>{price}</code>\n"
+            "Order Price: <code>{price}</code>\n"
             "Margin: <code>{margin}</code> USDT\n"
             "Time: <code>{create_time}</code>"
         ),
 
         # Positions
-        "positions_loading": "Loading positions…",
-        "positions_title": "📌 Positions",
-        "positions_empty": "No positions.",
-        "positions_page": "Page {page}/{pages} (total {total})",
+        "positions_loading": "Querying...",
+        "positions_title": "📌 Current Positions",
+        "positions_empty": "No open positions.",
+        "positions_page": "Page {page}/{pages} (Total: {total})",
         "positions_refresh": "Refresh",
-        "positions_prev": "Prev",
-        "positions_next": "Next",
+        "positions_prev": "Previous Page",
+        "positions_next": "Next Page",
         "positions_item": (
-            "💡 <b>Symbol</b>: <code>{symbol}</code>\n"
+            "💡 <b>Trading Pair</b>: <code>{symbol}</code>\n"
             "Side: {side}\n"
-            "Value: <code>{holding_value}</code> {settle}\n"
-            "Avg: <code>{avg_price}</code>\n"
-            "Mark: <code>{mark_price}</code>\n"
-            "Liq: <code>{liq_price}</code>\n"
+            "Position Value: <code>{holding_value}</code> {settle}\n"
+            "Entry Price: <code>{avg_price}</code>\n"
+            "Mark Price: <code>{mark_price}</code>\n"
+            "Liquidation Price: <code>{liq_price}</code>\n"
             "Margin: <code>{margin}</code> {settle}\n"
-            "uPnL: <code>{pnl}</code> {settle} ({pnl_pct}%){tp_sl_line}"
+            "Unrealized PnL: <code>{pnl}</code> {settle} ({pnl_pct}%){tp_sl_line}"
         ),
-        "tp_sl_ratio_full": "Full",
+        "tp_sl_ratio_full": "Close All",
         "tp_sl_ratio_partial": "{pct}%",
-        "positions_tp_sl_line": "\nTP: <code>{tp}</code>  SL: <code>{sl}</code>",
+        "positions_tp_sl_line": "\nTake Profit: <code>{tp}</code>  Stop Loss: <code>{sl}</code>",
         "positions_close_btn": "Close {symbol}",
-        "positions_close_all_btn": "Close all",
-        "positions_close_all_alert": "⚠️ This will close ALL positions.\n\nIf you're sure, tap \"Confirm close all\" again.",
-        "positions_close_all_confirm_btn": "Confirm close all",
+        "positions_close_all_btn": "One-Click Close",
+        "positions_close_all_alert": "⚠️ All open positions will be closed.\n\nClick \"Confirm One-Click Close\" again to proceed.",
+        "positions_close_all_confirm_btn": "Confirm One-Click Close",
         "positions_close_all_back_btn": "Back",
-        "positions_close_hint": "Tap below to close that position:",
-        "positions_close_ok": "Position closed",
-        "positions_close_fail": "Close failed: {reason}",
-        "positions_close_all_done": "All positions closed ({count})",
-        "positions_close_all_partial": "Partially closed ({ok}/{total}). Please tap Refresh to confirm.",
-        "positions_close_all_none": "No positions to close.",
-        "positions_close_all_fail": "Close all failed: {reason}",
+        "positions_close_hint": "Click the Close button below to close the position:",
+        "positions_close_ok": "Position closed successfully",
+        "positions_close_fail": "Failed to close position: {reason}",
+        "positions_close_all_done": "All positions have been closed (Total: {count})",
+        "positions_close_all_partial": "Partially closed ({ok}/{total} positions). Please click Refresh to confirm.",
+        "positions_close_all_none": "No positions available to close.",
+        "positions_close_all_fail": "One-Click Close failed: {reason}",
     },
 }
 
 
 def t(lang: str, key: str, **kwargs: Any) -> str:
-    table = TRANSLATIONS.get(lang) or TRANSLATIONS["zh-TW"]
-    template = table.get(key) or TRANSLATIONS["zh-TW"].get(key) or key
+    table = TRANSLATIONS.get(lang) or TRANSLATIONS["en"]
+    template = table.get(key) or TRANSLATIONS["en"].get(key) or key
     try:
         return template.format(**kwargs)
     except Exception:

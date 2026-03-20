@@ -217,6 +217,7 @@ async def fetch_positions(
     *,
     contract_type: int,
     uid: str,
+    wallet: str,
     brand: str,
     symbol: Optional[str] = None,
     settle_coin: Optional[str] = None,
@@ -224,7 +225,7 @@ async def fetch_positions(
     """
     查询当前持仓：
     - POST /trade/positions
-    - Query params: contractType / uid / brand（wallet 不需要）
+    - Query params: contractType / uid / wallet / brand
     - JSON body: { symbol?, settleCoin? }（可空）
     回傳 data list；若錯誤回傳 None。
     """
@@ -239,7 +240,7 @@ async def fetch_positions(
         body["settleCoin"] = str(settle_coin).strip()
     try:
         async with aiohttp.ClientSession() as session:
-            params = {"contractType": int(contract_type), "uid": uid, "brand": str(brand)}
+            params = {"contractType": int(contract_type), "uid": uid, "wallet": str(wallet).strip(), "brand": str(brand)}
             async with session.post(
                 url,
                 headers={**headers, "Content-Type": "application/json"},

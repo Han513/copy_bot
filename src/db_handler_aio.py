@@ -36,7 +36,7 @@ class UserSetting(Base):
     __tablename__ = "user_settings"
 
     user_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    language: Mapped[str] = mapped_column(String(16), nullable=False, default="zh-TW")
+    language: Mapped[str] = mapped_column(String(16), nullable=False, default="en")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
@@ -78,6 +78,7 @@ class ContractInfo(Base):
     max_market_delegate_num: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     min_market_delegate_num: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     price_precision: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    base_precision: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 價格展示用小數位數，來自 exchange_info.baseShowPrecision
     fee_rate_taker: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     fee_rate_maker: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     leverage_level: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
@@ -130,6 +131,16 @@ async def init_db() -> None:
         except Exception as e:  # noqa: BLE001
             # 若欄位已是 BIGINT / 表不存在 / 權限不足，忽略並記錄
             logger.warning(f"DB migrate contract_infos.online_time skipped: {e}")
+
+        # 兼容舊版資料表：contract_infos 補 base_precision（價格展示精度）
+        try:
+            name = getattr(conn.dialect, "name", "")
+            if name in {"postgresql", "postgres"}:
+                await conn.execute(text("ALTER TABLE contract_infos ADD COLUMN IF NOT EXISTS base_precision INTEGER"))
+            elif name == "sqlite":
+                await conn.execute(text("ALTER TABLE contract_infos ADD COLUMN base_precision INTEGER"))
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"DB migrate contract_infos.base_precision skipped: {e}")
 
         # 兼容舊版資料表：copy_orders 補 params_json 欄位（存下單參數快照）
         try:
@@ -226,7 +237,7 @@ async def get_balance(user_id: str) -> float:
         return float(ub.balance) if ub else 0.0
 
 
-async def get_user_language(user_id: str, default: str = "zh-TW") -> str:
+async def get_user_language(user_id: str, default: str = "en") -> str:
     if Session is None:
         raise RuntimeError("storage 尚未初始化：請先呼叫 init_storage(database_url)")
     async with Session() as session:
@@ -240,7 +251,7 @@ async def set_user_language(user_id: str, language: str) -> str:
         raise RuntimeError("storage 尚未初始化：請先呼叫 init_storage(database_url)")
     language = str(language).strip()
     if not language:
-        language = "zh-TW"
+        language = "en"
     async with Session() as session:
         async with session.begin():
             result = await session.execute(select(UserSetting).where(UserSetting.user_id == user_id))
@@ -253,7 +264,7 @@ async def set_user_language(user_id: str, language: str) -> str:
     return language
 
 
-async def ensure_user_language(user_id: str, preferred_language: str = "zh-TW") -> str:
+async def ensure_user_language(user_id: str, preferred_language: str = "en") -> str:
     """
     確保 user_settings 至少有一筆資料。
     - 若使用者已設定語言：回傳既有語言（不覆蓋）
@@ -261,7 +272,7 @@ async def ensure_user_language(user_id: str, preferred_language: str = "zh-TW") 
     """
     if Session is None:
         raise RuntimeError("storage 尚未初始化：請先呼叫 init_storage(database_url)")
-    preferred_language = str(preferred_language).strip() or "zh-TW"
+    preferred_language = str(preferred_language).strip() or "en"
     async with Session() as session:
         result = await session.execute(select(UserSetting).where(UserSetting.user_id == str(user_id)))
         us = result.scalars().first()
@@ -392,6 +403,7 @@ async def upsert_contract_infos(items: list[dict[str, Any]]) -> int:
                 row.max_market_delegate_num = (int(it.get("maxMarketDelegateNum")) if it.get("maxMarketDelegateNum") is not None else None)
                 row.min_market_delegate_num = (int(it.get("minMarketDelegateNum")) if it.get("minMarketDelegateNum") is not None else None)
                 row.price_precision = (int(it.get("pricePrecision")) if it.get("pricePrecision") is not None else None)
+                row.base_precision = (int(it.get("baseShowPrecision")) if it.get("baseShowPrecision") is not None else None)
                 row.fee_rate_taker = (str(it.get("feeRateTaker")) if it.get("feeRateTaker") is not None else None)
                 row.fee_rate_maker = (str(it.get("feeRateMaker")) if it.get("feeRateMaker") is not None else None)
                 row.leverage_level = (int(it.get("leverageLevel")) if it.get("leverageLevel") is not None else None)
